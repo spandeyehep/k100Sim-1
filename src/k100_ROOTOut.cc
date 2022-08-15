@@ -85,14 +85,14 @@ void k100_ROOTOut::DumpToFile(G4double* dataArray , G4int nrows, G4int ncols) {
     X3.push_back(dataArray[jj*ncols + 10]);
     Y3.push_back(dataArray[jj*ncols + 11]);
     Z3.push_back(dataArray[jj*ncols + 12]);
-    time1.push_back(dataArray[jj*ncols + 13]);
+    time3.push_back(dataArray[jj*ncols + 13]);
     PX1.push_back(dataArray[jj*ncols + 14]);
     PY1.push_back(dataArray[jj*ncols + 15]);
     PZ1.push_back(dataArray[jj*ncols + 16]);
     X1.push_back(dataArray[jj*ncols + 17]);
     Y1.push_back(dataArray[jj*ncols + 18]);
     Z1.push_back(dataArray[jj*ncols + 19]);
-    time3.push_back(dataArray[jj*ncols + 20]);
+    time1.push_back(dataArray[jj*ncols + 20]);
     nCap.push_back(dataArray[jj*ncols + 21]);
   
 
