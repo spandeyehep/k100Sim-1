@@ -72,7 +72,7 @@
 #include "G4HadronElasticPhysicsHP.hh"
 #include "G4HadronElasticPhysicsLEND.hh"
 
-#include "G4DataQuestionaire.hh"
+//#include "G4DataQuestionaire.hh"
 #include "G4HadronPhysicsShielding.hh"
 
 //template<class T> TShielding_ComptonsUpdate<T>::TShielding_ComptonsUpdate(G4int ver):  T()
