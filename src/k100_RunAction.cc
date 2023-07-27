@@ -26,12 +26,14 @@
 char filename[200];
 
 
-k100_RunAction::k100_RunAction()
+k100_RunAction::k100_RunAction(G4bool rootOutput)
 {
  
   //set a default for saveOnlyNCapture
   saveOnlyNCapture = false;
   
+  //save output in textFile?
+  OutputRootFlag = rootOutput;
   // automatic (time-based) random seeds and filenames for each run
   struct timeval mytime;
   gettimeofday(&mytime, NULL);
@@ -55,6 +57,8 @@ k100_RunAction::~k100_RunAction()
 }
 void k100_RunAction::BeginOfRunAction(const G4Run* aRun)
 {
+  
+
 
   runN = aRun->GetRunID();
   if ( (runN % 1000 == 0) || (runN<100) ) 
@@ -82,9 +86,26 @@ void k100_RunAction::BeginOfRunAction(const G4Run* aRun)
        ResetRun=false;
      }
     //DataFileNamePrefix=DataFileNamePrefix+G4String(file);
-    dataOut = new k100_DataStorage(DataFileNamePrefix,runN,1); 
+    dataOut = new k100_DataStorage(DataFileNamePrefix,runN,1,OutputRootFlag); 
 
+    #ifdef NON_SD_INFO
+    // For Non SD nCap info
+    G4AnalysisManager *man = G4AnalysisManager::Instance();
+    man->OpenFile("Nsc_"+DataFileNamePrefix);
+    man->CreateNtuple("nCapInfo","nCapInfo");
+    man->CreateNtupleIColumn("fEvent");
+    man->CreateNtupleDColumn("fNeutron_energy");
+    man->CreateNtupleIColumn("fPDGID");
+    man->CreateNtupleDColumn("fsec_KE");
+
+    man->FinishNtuple(0);
+
+    std::cout<<"################## DataFileNamePrefix = "<<DataFileNamePrefix<<std::endl;
+    #endif
   }
+
+
+
 
 }
 void k100_RunAction::EndOfRunAction(const G4Run*)
@@ -97,5 +118,12 @@ void k100_RunAction::EndOfRunAction(const G4Run*)
   if(OutputDataToFile) {
     delete dataOut;
   }
+
+  #ifdef NON_SD_INFO
+  // For Non SD nCap info
+  G4AnalysisManager *man = G4AnalysisManager::Instance(); 
+  man->Write();
+  man->CloseFile();
+  #endif
 
 }

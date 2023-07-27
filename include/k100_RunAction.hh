@@ -16,6 +16,10 @@
 
 #include "G4UserRunAction.hh"
 #include "globals.hh"
+//#define NON_SD_INFO  //uncomment this line if you want to save all nCap info from the lab
+#ifdef NON_SD_INFO
+#include "g4root.hh"
+#endif
 
 class G4Run;
 
@@ -26,7 +30,7 @@ class k100_RunAction : public G4UserRunAction
 {
 public :
 
-  k100_RunAction();
+  k100_RunAction(G4bool rootOutput);
   ~k100_RunAction();
 
 public :
@@ -54,6 +58,7 @@ private :
 
   k100_RunActionMessenger* runMessenger; 
 
+  G4bool OutputRootFlag;
   G4bool   autoSeed;
   G4bool   saveOnlyNCapture; //variable to cull the output list
   G4String DataFileNamePrefix;

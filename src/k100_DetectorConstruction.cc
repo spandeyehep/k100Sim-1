@@ -51,6 +51,9 @@
 #include "G4LogicalVolumeStore.hh"
 #include "G4SolidStore.hh"
 
+//spandey
+#include "k100_NaIParametrization.hh"
+
 #include <vector>
 #include <ostream>
 
@@ -89,11 +92,17 @@ k100_DetectorConstruction::k100_DetectorConstruction()
   ConstructWestReflectorBool = false;
   ConstructFrameBool = false;
   ConstructPuBeSourceAndShieldBool = false;
+  ConstructNaIArrayBool = false; //spandey
+  ConstructBoronShieldBool = false; //spandey
+  ConstructPolyBoxBool = false; //spandey
   SetConstructThermalNeutronBoxBool(false); //note, requires construct ZIP bool
   SetConstructShieldTestEnvironmentBool(false); //note, requires construct ZIP bool
   SetConstructSimpleGammaCoinBool(false); //note, requires construct ZIP bool
   SetConstructPuBeNaIBool(false); //note, requires construct ZIP bool
   SetFirstDetGe(true); //we only use the first detector in the array for now, should it be Ge?
+
+  NbBoronShieldVert = 1;
+  NbBoronShieldHori = 1;
 
   //
   DrawSolidDetBox = true; DrawSolidZipBool = true;
@@ -101,6 +110,9 @@ k100_DetectorConstruction::k100_DetectorConstruction()
   DrawSolidVetoBool = false;
   DrawSolidShieldsBool = false; DrawSolidIceBoxBool = false;
 
+
+  SodiumBorateDensityFraction = 0.75; //spandey
+  BoronShieldThickness = 1.; // in inches // spandey
 
   // ---------Material Definition--------------
   DefineMaterials();
@@ -144,6 +156,8 @@ k100_DetectorConstruction::k100_DetectorConstruction()
   pubeNaIParams.OrbPos = G4ThreeVector(0,0,0);
   pubeNaIParams.OrbRad = 10*cm;
 
+
+  
   // ---------Detector Names--------------
   DetCollName = new char*[30];  TowCollName = new char*[5];     DetMaterials = new G4int [30];
   DetCollName[0]  = "zip01";  
@@ -276,8 +290,10 @@ void k100_DetectorConstruction::DefineMaterials()
   G4Element *stillLiquidHe = new G4Element("Liquid3He","L3He",1);
   stillLiquidHe->AddIsotope(isoHe3,1.0);
   G4Element *MCLiquidHe = new G4Element("MCLiquidHe","LHeMix",2);
-  MCLiquidHe->AddIsotope(isoHe3,0.12);
-  MCLiquidHe->AddIsotope(isoHe4,0.88);
+  // MCLiquidHe->AddIsotope(isoHe3,0.12);
+  // MCLiquidHe->AddIsotope(isoHe4,0.88);
+  MCLiquidHe->AddIsotope(isoHe3,0.06656);
+  MCLiquidHe->AddIsotope(isoHe4,0.93344);
 
   // Define Boron 
   G4Element* elementB=new G4Element(name="Boron", symbol="B", z=5., a=10.811*g/mole);
@@ -356,6 +372,16 @@ void k100_DetectorConstruction::DefineMaterials()
   sba->AddElement(elementB , 4);
   sba->AddElement(elementO , 7);
   sba->AddElement(elementNa , 2);
+
+  
+  //sodium tetraborate decahydrate : Na2B4O7.10H2O
+  G4Material* stb_dechyd = new G4Material(name="sodium_tetraborate_decahydrate", density= SodiumBorateDensityFraction * 1.73*g/cm3, ncomponents=4);
+  stb_dechyd->AddElement(elementB , 4);
+  stb_dechyd->AddElement(elementO , 17); // 7 from borate and 10 from 10h2o
+  stb_dechyd->AddElement(elementNa , 2);
+  stb_dechyd->AddElement(elementH , 20); // 20 from 10h20
+  
+
 
   // Silicon 
   G4Material* Silicon = new G4Material(name="Silicon", density = 2.330*g/cm3, ncomponents=1);
@@ -598,9 +624,10 @@ void k100_DetectorConstruction::DefineMaterials()
   stillHe=stillLiquid;
   MCHe=MCLiquid;
   super=Super;
+  boronShieldMat = stb_dechyd; //spandey
   // ------------------------------------------------
 
-  G4cout << *(G4Material::GetMaterialTable()) << G4endl;
+  // G4cout << *(G4Material::GetMaterialTable()) << G4endl;
 
 } // ends Material Definitions
 
@@ -628,6 +655,8 @@ G4VPhysicalVolume* k100_DetectorConstruction::Construct()
   G4PhysicalVolumeStore::GetInstance()->Clean();
   G4LogicalVolumeStore::GetInstance()->Clean();
   G4SolidStore::GetInstance()->Clean();
+  
+  DefineMaterials(); //spandey: Added here again so that changes made in SodiumBorateDensityFraction using macro command is propagated correctly to material.
 
   // Prepare to declare sensitive detectors
   G4SDManager* SDman = G4SDManager::GetSDMpointer();
@@ -1395,6 +1424,7 @@ void k100_DetectorConstruction::ConstructEverything(G4LogicalVolume*  logicalWor
   if(ConstructFrameBool)  {ConstructFrame(physicalWorld);}
   if(ConstructPuBeSourceAndShieldBool)  {ConstructPuBeSourceAndShield(physicalWorld);}
   if(ConstructThermalNeutronBoxBool)  {ConstructThermalNeutronBox(physicalWorld);}
+  if(ConstructNaIArrayBool) {ConstructNaIArray(logicalWorld);} //spandey
 
 } // ends ConstructEverything
 
@@ -1621,10 +1651,13 @@ void k100_DetectorConstruction::ConstructShields(G4LogicalVolume*  logicalWorld)
   // place rects
   G4LogicalVolume* logicRect = new G4LogicalVolume(rect,polyMat,"logicRect",0,0,0);
   panelPosition=G4ThreeVector(frame_x-5*2.54*cm,frame_y+12*2.54*cm,frame_z);
-  if(!shieldParams.addNaISouth&!shieldParams.HPGeboron) //only place south panels when NOT using NaI detectors or boron HPGe
+  if(!shieldParams.addNaISouth&!shieldParams.HPGeboron&!ConstructNaIArrayBool) //only place south panels when NOT using NaI detectors or boron HPGe
     new G4PVPlacement(0,panelPosition,"physicRect",logicRect,physicalWorld,false,0);
   panelPosition=G4ThreeVector(frame_x+25*2.54*cm,frame_y+12*2.54*cm,frame_z);
   new G4PVPlacement(0,panelPosition,"physicRect1",logicRect,physicalWorld,false,1);
+  // //spandey updating north
+  // if(!ConstructNaIArrayBool)
+  //   new G4PVPlacement(0,panelPosition,"physicRect1",logicRect,physicalWorld,false,1);
   logicRect->SetVisAttributes(polyVis);
 
  // -------------- Make NaI detector frame (and place upon request) ------------
@@ -1960,11 +1993,16 @@ void k100_DetectorConstruction::ConstructShields(G4LogicalVolume*  logicalWorld)
   //place squares
   G4LogicalVolume* logicLeadRectY = new G4LogicalVolume(rectLeadBaseY,shieldPbMat,"logicLeadRectY",0,0,0);
   G4LogicalVolume* logicLeadRectY_forNaI = new G4LogicalVolume(rectLeadBaseY_forNaI,shieldPbMat,"logicLeadRectY_forNaI",0,0,0);
+
+  //spandey
+  //if(!shieldParams.addNaISouth&!shieldParams.HPGeboron){//change lead on side with NaI detectors
   if(!shieldParams.addNaISouth&!shieldParams.HPGeboron){//change lead on side with NaI detectors
+    
     leadPosition=G4ThreeVector(frame_x-(11.25)*2.54*cm,frame_y+12*2.54*cm,frame_z);
     new G4PVPlacement(0,leadPosition,"physicLeadRectY0",logicLeadRectY,physicalWorld,false,0);
   }
-  else if(shieldParams.addNaISouth&!shieldParams.HPGeboron){
+  else if(shieldParams.addNaISouth&!shieldParams.HPGeboron&!ConstructNaIArrayBool){
+    
     leadPosition=G4ThreeVector(frame_x-(13.25)*2.54*cm,frame_y+(12+22.5-(19.0/2.0))*2.54*cm,frame_z);
     new G4PVPlacement(0,leadPosition,"physicLeadRectY_forNaI0",logicLeadRectY_forNaI,physicalWorld,false,0);
     leadPosition=G4ThreeVector(frame_x-(13.25)*2.54*cm,frame_y+(12-22.5+(19.0/2.0))*2.54*cm,frame_z);
@@ -2294,6 +2332,54 @@ void k100_DetectorConstruction::ConstructIceBox(G4LogicalVolume*  logicalWorld)
   G4LogicalVolume* logicbtIn = new G4LogicalVolume(btIn,super,"logicbtIn",0,0,0);
   new G4PVPlacement(0,btInPos,"physicbtIn",logicbtIn,physicalWorld,false,0);
   logicbtIn->SetVisAttributes(superVis);
+
+  G4cout<<"---- Adding MC and still ----"<<G4endl;
+
+  // Mixing chamber
+  G4ThreeVector MCPos = btShellPos;
+  MCPos.setZ(btShellPos.z() + 27.2528*2.54*cm + .5*0.9*2.54*cm); // position w.r.t. bottom of dewer
+  
+  G4Tubs *mcHousingOuter = new G4Tubs("mcHousingOuter",0, .5*1.675*2.54*cm, .5*1.4*2.54*cm, 0, 2*pi);
+  G4Tubs *mcHousingInner = new G4Tubs("mcHousingInner",0, .5*1.175*2.54*cm, .5*0.9*2.54*cm, 0, 2*pi);
+  G4SubtractionSolid *mcHousing = new G4SubtractionSolid("mcHousing",mcHousingOuter,mcHousingInner);
+  G4LogicalVolume* logicMCHousing = new G4LogicalVolume(mcHousing,iceboxCuMat,"logicMCHousing",0,0,0);
+  logicMCHousing->SetVisAttributes(copperVis);
+  new G4PVPlacement(0,MCPos,"physicMCHousing",logicMCHousing,physicalWorld,false,0);
+
+
+  G4Tubs* mcHe3 = new G4Tubs("mcHe3", 0, .5*1.175*2.54*cm, .5*0.45*2.54*cm, 0, 2*pi);
+  G4LogicalVolume* logicMCHe3 = new G4LogicalVolume(mcHe3,stillHe,"logicMCHe3",0,0,0); // pure He3
+  logicMCHe3->SetVisAttributes(G4Colour(255/255.,0/255.,255/255.));
+
+  G4Tubs* mcHe3He4 = new G4Tubs("mcHe3He4", 0, .5*1.175*2.54*cm, .5*0.45*2.54*cm, 0, 2*pi);
+  G4LogicalVolume* logicMCHe3He4 = new G4LogicalVolume(mcHe3He4,MCHe,"logicMCHe3He4",0,0,0); //  He3 He4 mix
+  logicMCHe3He4->SetVisAttributes(G4Colour(32/255.,32/255.,160/255.));
+
+  G4ThreeVector MCHe3Pos = MCPos;
+  G4ThreeVector MCHe3He4Pos = MCPos;
+  MCHe3Pos.setZ(MCPos.z() + 0.5*0.45*2.54*cm);
+  MCHe3He4Pos.setZ(MCPos.z() - 0.5*0.45*2.54*cm);
+
+  new G4PVPlacement(0,MCHe3Pos,"physicMCHe3",logicMCHe3,physicalWorld,false,0);
+  new G4PVPlacement(0,MCHe3He4Pos,"physicMCHe3He4",logicMCHe3He4,physicalWorld,false,0);
+
+  // still
+  
+  G4ThreeVector StillPos = MCPos;
+  StillPos.setZ(MCPos.z() + 3.475*2.54*cm + .5*0.97*2.54*cm); // position w.r.t. bottom of MC
+
+  G4Tubs *stillHousingOuter = new G4Tubs("stillHousingOuter",0, .5*2.0625*2.54*cm, .5*1.47*2.54*cm, 0, 2*pi);
+  G4Tubs *stillHousingInner = new G4Tubs("stillHousingInner",0, .5*1.5625*2.54*cm, .5*0.97*2.54*cm, 0, 2*pi);
+  G4SubtractionSolid *stillHousing = new G4SubtractionSolid("stillHousing",stillHousingOuter,stillHousingInner);
+  G4LogicalVolume* logicStillHousing = new G4LogicalVolume(stillHousing,iceboxCuMat,"logicStillHousing",0,0,0);
+  logicStillHousing->SetVisAttributes(copperVis);
+  new G4PVPlacement(0,StillPos,"physicStillHousing",logicStillHousing,physicalWorld,false,0);
+
+  G4Tubs* stillDilutePhase = new G4Tubs("stillDilutePhase", 0, .5*1.5625*2.54*cm, .5*0.97*2.54*cm, 0, 2*pi);
+  G4LogicalVolume* logicStillDilutePhase = new G4LogicalVolume(stillDilutePhase,MCHe,"logicStillDilutePhase",0,0,0);
+  new G4PVPlacement(0,StillPos,"physicStillHe3",logicStillDilutePhase,physicalWorld,false,0);
+  logicStillDilutePhase->SetVisAttributes(G4VisAttributes(G4Colour(32/255.,32/255.,160/255.)));
+
 } // ends IceBox Construction
 
 void k100_DetectorConstruction::ConstructFloor(G4VPhysicalVolume*  world)
@@ -2656,7 +2742,8 @@ void k100_DetectorConstruction::ConstructFrame(G4VPhysicalVolume*  world)
   G4Tubs* post = new G4Tubs("post",0,0.5*27*cm,0.5*1.735*m,0,2*pi); //with sand
   G4Tubs* sand = new G4Tubs("post",0,0.5*27*cm-0.5*2.54*cm,0.5*1.735*m,0,2*pi);
   G4LogicalVolume* logicalPost = new G4LogicalVolume(post,G4NISTAl,"logicalPost",0,0,0);
-  G4LogicalVolume* logicalSand = new G4LogicalVolume(sand,blastsand,"logicalSand",0,0,0);
+  G4LogicalVolume* logicalSand = new G4LogicalVolume(sand,blastsand,"logicalSand",0,0,0); // blast sand
+  //G4LogicalVolume* logicalSand = new G4LogicalVolume(sand,G4NISTair,"logicalSand",0,0,0); // Air
   for(int i=0;i<postPointsY.size();i++){
     G4ThreeVector postPos(postPointsX[i],postPointsY[i],floorZ+(2.0+0.25)*2.54*cm+0.5*1.735*m);
     std::ostringstream name,sand_name;
@@ -3085,7 +3172,7 @@ void k100_DetectorConstruction::ConstructSimpleGammaCoin(G4VPhysicalVolume *worl
 	VisAttGeGammaCyl->SetForceWireframe(false);  //I want a Wireframe of the me
 	logicalGeGammaCyl->SetVisAttributes(VisAttGeGammaCyl);  
 
-	//------------------------------------------------ 
+	      //------------------------------------------------ 
         // Sensitive detectors
         //------------------------------------------------ 
     
@@ -3163,3 +3250,324 @@ void k100_DetectorConstruction::DetSizeMod(G4double R, G4double thk)
   Zip_z = thk;
   return;
 }
+
+//spandey
+void k100_DetectorConstruction::ConstructNaIArray(G4LogicalVolume*  logicalWorld) {
+
+  G4VisAttributes* superVis = new G4VisAttributes(G4Colour(0./255.,255./255.,0/255.));
+  superVis->SetForceSolid(false);
+  G4VisAttributes* mother_NaI = new G4VisAttributes(G4Colour(0./255.,255./255.,0/255.,0.0));
+  mother_NaI->SetForceSolid(false);
+  G4double NaI_tile_length = 406 *mm;
+  G4double NaI_tile_height = 57 *mm;
+  G4double NaI_tile_width = 102 *mm;
+
+  //Floor block
+  //G4double fridgeHalfHeightToBottomPlate = (12.9045+13.25+0.25)*2.54*cm;
+  G4double fridgeHalfHeightToBottomPlate = (12.9045+19.254+0.25)*2.54*cm; //modified 1/1/18 to get floor height right
+  //G4double distanceToFloorZ = fridge_z+12.9045*2.54*cm - fridgeHalfHeightToBottomPlate - 21.0*2.54*cm;
+  //G4double distanceCenterToFloor = fridgeHalfHeightToBottomPlate + 21.0*2.54*cm;
+  G4double distanceCenterToFloor = fridgeHalfHeightToBottomPlate + 21.0*2.54*cm -70.86*mm; //compensate for 70.86mm discrepancy in floor distance 1/1/18
+  G4double floorZ = fridge_z+12.9045*2.54*cm - distanceCenterToFloor;
+  
+  G4Box* NaI_tile = new G4Box("NaI_tile", 0.5 * NaI_tile_width, 0.5* NaI_tile_length, 0.5* NaI_tile_height);
+  G4LogicalVolume* NaI_tile_LV = new G4LogicalVolume(NaI_tile,naiMat,"NaI_tile_LV",0,0,0);
+  NaI_tile_LV->SetVisAttributes(superVis);
+
+  /////////////////////////
+  ///   Vertical Array  ///
+  ////////////////////////
+
+  G4Box* NaI_Mother_vertical = new G4Box("NaI_Mother_vertical", 0.5*(NaI_tile_width + 2*cm), 0.5*(NaI_tile_length + 2*cm) , 0.5*(1255 + 2*cm));
+  G4LogicalVolume* NaI_Mother_vertical_LV = new G4LogicalVolume(NaI_Mother_vertical,G4NISTair,"NaI_Mother_vertical_LV",0,0,0);
+  NaI_Mother_vertical_LV->SetVisAttributes(mother_NaI);
+  //G4ThreeVector tilePos(fridge_x + 175.1*mm, fridge_y, fridge_z);
+  G4double xposition = (-1*frame_x) + (0.5 * NaI_tile_width) + 10*cm; 
+  G4double zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+  zposition = zposition + 1255.0/2 - 89.0;
+  //Zposition = floorZ + 89 + (fTileHeight)/2;
+  G4ThreeVector NaI_Mother_vertical_pos(-1.0*xposition , 0, zposition);
+  G4cout<<"Vertical array: center (x,y,z)mm = ("<<(-1.0*xposition)<<", 0, "<<(zposition)<<G4endl;
+  G4cout<<"Vertical array: size/2 (x,y,z)mm = ("<<(0.5*(NaI_tile_width + 2*cm))<<", "<<(0.5*(NaI_tile_length + 2*cm))<<" ,"<<(0.5*(1255 + 2*cm))<<G4endl;
+  new G4PVPlacement(0,NaI_Mother_vertical_pos,"NaI_Mother_vertical_placement",NaI_Mother_vertical_LV,physicalWorld,false,0);
+
+
+  G4double stack_height = 292;
+  G4double stack_width = NaI_tile_width;
+  G4double stack_length = NaI_tile_length;
+  G4int nTiles = 20;
+  k100_NaIParametrization *NaIParam = new k100_NaIParametrization(stack_height, stack_length, stack_width,
+                                                                  NaI_tile_height, NaI_tile_length, NaI_tile_width,
+                                                                  3,nTiles);
+  
+  
+
+  new G4PVParameterised("NaIArray_stack1",NaI_tile_LV,NaI_Mother_vertical_LV,kZAxis, nTiles, NaIParam);
+  //std::cout<<"Mother VOLUME x position = "<<xposition<<std::endl;
+  //G4cout<<"xxxx NaI cooredinates of first copy = "<<NaIParam->GetCoordinates(0)<<G4endl;
+
+  
+
+  /////////////////////////
+  ///   Bottom Array  ///
+  ////////////////////////
+
+  G4Box* NaI_Mother_bottom = new G4Box("NaI_Mother_bottom", 0.5*(324.0 + 2*cm), 0.5*(NaI_tile_length + 2*cm) , 
+    0.5*(NaI_tile_height + 2*cm));
+  G4LogicalVolume* NaI_Mother_bottom_LV = new G4LogicalVolume(NaI_Mother_bottom,G4NISTair,"NaI_Mother_bottom_LV",0,0,0);
+  NaI_Mother_bottom_LV->SetVisAttributes(mother_NaI);
+  //G4ThreeVector tilePos(fridge_x + 175.1*mm, fridge_y, fridge_z);
+  xposition = 0.0; 
+  zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+  zposition = zposition  - 166.0;
+  //std::cout<<"zposition for bottom NaI array = "<<zposition<<std::endl;
+  //Zposition = floorZ + 89 + (fTileHeight)/2;
+  G4ThreeVector NaI_Mother_bottom_pos(xposition , 0, zposition);
+  G4RotationMatrix r90Rotation;    // Rotate bottom tiles
+  r90Rotation.rotateZ(90.*deg);
+  G4Transform3D BottomRotate(r90Rotation, NaI_Mother_bottom_pos);
+  //new G4PVPlacement(0,NaI_Mother_bottom_pos,"NaI_Mother_bottom_placement",NaI_Mother_bottom_LV,physicalWorld,false,0);
+  new G4PVPlacement(BottomRotate,"NaI_Mother_bottom_placement",NaI_Mother_bottom_LV,physicalWorld,false,0);
+
+
+  
+  stack_height = NaI_tile_height;
+  stack_width = 324;
+  stack_length = NaI_tile_length;
+  nTiles = 3;
+  k100_NaIParametrization *NaIParam_bottom = new k100_NaIParametrization(stack_height, stack_length, stack_width,
+                                                                  NaI_tile_height, NaI_tile_length, NaI_tile_width,
+                                                                  1,nTiles);
+
+
+
+  new G4PVParameterised("NaIArray_stack2",NaI_tile_LV,NaI_Mother_bottom_LV,kXAxis, nTiles, NaIParam_bottom);
+
+
+
+  //------------------------------------------------ 
+  // Sensitive detectors
+  //------------------------------------------------ 
+
+  
+  // Prepare to declare sensitive detectors
+  G4SDManager* SDman = G4SDManager::GetSDMpointer();
+
+  G4String detectorZipSDname = "NaITile";
+  G4int collID = -1; collID = SDman->GetCollectionID(detectorZipSDname);
+  k100_ZipSD* azipSD1;
+  ConstructGenericSensitiveInt=2; //?FIXME I actually forgot what role this is supposed to play 
+  azipSD1 = new k100_ZipSD(detectorZipSDname, k100CollName.size()+1);
+  k100CollName[detectorZipSDname] = k100CollName.size()+1;
+  SDman->AddNewDetector(azipSD1);
+  NaI_tile_LV->SetSensitiveDetector(azipSD1);
+
+  
+  //------------------------------------------------ 
+  // Boron shield
+  //------------------------------------------------ 
+  if(ConstructBoronShieldBool) {
+
+
+    G4cout<<">>>> BORON SHIELD : Borate density fraction = "<<GetSodiumBorateDensityFraction()<<G4endl;
+    G4cout<<">>>> BORON SHIELD : Nb of vertical shields = "<<GetNbBoronShieldVert()<<G4endl;
+    G4cout<<">>>> BORON SHIELD : Nb of horizontal shields = "<<GetNbBoronShieldHori()<<G4endl;
+
+
+    G4VisAttributes* boron_shield_Vis = new G4VisAttributes(G4Colour(0./255.,0./255.,255./255.));
+    boron_shield_Vis->SetForceSolid(false);
+
+    G4VisAttributes* boron_shield_box_Vis = new G4VisAttributes(G4Colour(0./255.,0./255.,255./255., 0.2));
+    boron_shield_box_Vis->SetForceSolid(false);
+
+    G4VisAttributes* polyVis = new G4VisAttributes(G4Colour(255/255.,255/255.,255/255.,0.2));
+    polyVis->SetForceSolid(false);
+
+    /////////////////////
+    // vertical shield //
+    ////////////////////
+
+    G4Box* boron_shield_vert = new G4Box("boron_shield_vert", 0.5*(BoronShieldThickness * 2.54 *cm), 0.5*(NaI_tile_length + 2*cm) , 0.5*(1255 + 2*cm));
+    if(GetNbBoronShieldVert() == 1) {
+
+      // vertical shield 1 - Nearer to silicon
+
+      G4LogicalVolume* boron_shield_vert_LV_1 = new G4LogicalVolume(boron_shield_vert,boronShieldMat,"boron_shield_vert_LV_1",0,0,0);
+
+      xposition = (-1*frame_x) + (0.5 * NaI_tile_width) + 10*cm; 
+      zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+      zposition = zposition + 1255.0/2 - 89.0;
+      G4ThreeVector boron_shield_vert_pos_1(-1.0*xposition + NaI_tile_width/2 + 3*cm , 0, zposition);
+
+      //G4PVPlacement *boron_shield_vert_PV = new G4PVPlacement(0,boron_shield_vert_pos,"boron_shield_vert_PV",boron_shield_vert_LV,physicalWorld,false,0);
+      new G4PVPlacement(0,boron_shield_vert_pos_1,"boron_shield_vert_PV_1",boron_shield_vert_LV_1,physicalWorld,false,0);
+      boron_shield_vert_LV_1->SetVisAttributes(boron_shield_Vis);      
+
+    } 
+    else if(GetNbBoronShieldVert() == 2) {
+      // vertical shield 1 - Nearer to silicon
+
+      G4LogicalVolume* boron_shield_vert_LV_1 = new G4LogicalVolume(boron_shield_vert,boronShieldMat,"boron_shield_vert_LV_1",0,0,0);
+
+      xposition = (-1*frame_x) + (0.5 * NaI_tile_width) + 10*cm; 
+      zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+      zposition = zposition + 1255.0/2 - 89.0;
+      G4ThreeVector boron_shield_vert_pos_1(-1.0*xposition + NaI_tile_width/2 + 3*cm , 0, zposition);
+
+      //G4PVPlacement *boron_shield_vert_PV = new G4PVPlacement(0,boron_shield_vert_pos,"boron_shield_vert_PV",boron_shield_vert_LV,physicalWorld,false,0);
+      new G4PVPlacement(0,boron_shield_vert_pos_1,"boron_shield_vert_PV_1",boron_shield_vert_LV_1,physicalWorld,false,0);
+      boron_shield_vert_LV_1->SetVisAttributes(boron_shield_Vis);
+
+      // vertical shield 2 - Farther from silicon
+
+      G4LogicalVolume* boron_shield_vert_LV_2 = new G4LogicalVolume(boron_shield_vert,boronShieldMat,"boron_shield_vert_LV_2",0,0,0);
+
+      
+      G4ThreeVector boron_shield_vert_pos_2(-1.0*xposition - NaI_tile_width/2 - 3*cm , 0, zposition);
+
+      //G4PVPlacement *boron_shield_vert_PV = new G4PVPlacement(0,boron_shield_vert_pos,"boron_shield_vert_PV",boron_shield_vert_LV,physicalWorld,false,0);
+      new G4PVPlacement(0,boron_shield_vert_pos_2,"boron_shield_vert_PV_2",boron_shield_vert_LV_2,physicalWorld,false,0);
+      boron_shield_vert_LV_2->SetVisAttributes(boron_shield_Vis);
+    }
+
+    else if(GetNbBoronShieldVert() == 6) {
+      G4Box *outerBoxVert = new G4Box("outerBoxVert",0.5*(NaI_tile_width + 3*cm + BoronShieldThickness*2.54*cm), 0.5*(NaI_tile_length + 3*cm + BoronShieldThickness*2.54*cm) , 0.5*(1255 + 3*cm + BoronShieldThickness*2.54*cm));
+      G4Box *innerBoxVert = new G4Box("innerBoxVert",0.5*(NaI_tile_width + 3*cm), 0.5*(NaI_tile_length + 3*cm) , 0.5*(1255 + 3*cm));
+      G4SubtractionSolid *hollowBoxVert = new G4SubtractionSolid("hollowBoxVert",outerBoxVert,innerBoxVert);
+
+      G4LogicalVolume* hollowBoxVertLV = new G4LogicalVolume(hollowBoxVert,boronShieldMat,"hollowBoxVertLV",0,0,0);
+      hollowBoxVertLV->SetVisAttributes(boron_shield_box_Vis);
+      xposition = (-1*frame_x) + (0.5 * NaI_tile_width) + 10*cm; 
+      zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+      zposition = zposition + 1255.0/2 - 89.0;
+      //Zposition = floorZ + 89 + (fTileHeight)/2;
+      G4ThreeVector hollowBoxVert_pos(-1.0*xposition , 0, zposition);
+      new G4PVPlacement(0,hollowBoxVert_pos,"hollowBoxVert_placement",hollowBoxVertLV,physicalWorld,false,0);
+
+    }
+    if(ConstructPolyBoxBool && GetNbBoronShieldVert() == 6 && BoronShieldThickness == 1) {
+      G4Box *outerPolyBoxVert = new G4Box("outerPolyBoxVert",0.5*(NaI_tile_width + 3*cm + BoronShieldThickness*2.54*cm + 2.54*cm), 0.5*(NaI_tile_length + 3*cm + BoronShieldThickness*2.54*cm + 2.54*cm) , 0.5*(1255 + 3*cm + BoronShieldThickness*2.54*cm + 2.54*cm));
+      G4Box *innerPolyBoxVert = new G4Box("innerPolyBoxVert",0.5*(NaI_tile_width + 3*cm + BoronShieldThickness*2.54*cm), 0.5*(NaI_tile_length + 3*cm + BoronShieldThickness*2.54*cm) , 0.5*(1255 + 3*cm + BoronShieldThickness*2.54*cm));
+      G4SubtractionSolid *hollowPolyBoxVert = new G4SubtractionSolid("hollowPolyBoxVert",outerPolyBoxVert,innerPolyBoxVert);
+
+      G4LogicalVolume* hollowPolyBoxVertLV = new G4LogicalVolume(hollowPolyBoxVert,polyMat,"hollowPolyBoxVertLV",0,0,0);
+      hollowPolyBoxVertLV->SetVisAttributes(polyVis);
+      xposition = (-1*frame_x) + (0.5 * NaI_tile_width) + 10*cm; 
+      zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+      zposition = zposition + 1255.0/2 - 89.0;
+      //Zposition = floorZ + 89 + (fTileHeight)/2;
+      G4ThreeVector hollowPolyBoxVert_pos(-1.0*xposition , 0, zposition);
+      new G4PVPlacement(0,hollowPolyBoxVert_pos,"hollowPolyBoxVert_placement",hollowPolyBoxVertLV,physicalWorld,false,0);
+    }
+
+    
+    ///////////////////////
+    // horizontal shield //
+    //////////////////////
+    G4Box* boron_shield_hor = new G4Box("boron_shield_hor", 0.5*(324.0 + 2*cm), 0.5*(NaI_tile_length + 2*cm), 0.5*(BoronShieldThickness*2.54*cm));
+    if(GetNbBoronShieldHori() == 1) {
+
+      // horizontal shield 1 : nearer to silicon
+      G4LogicalVolume* boron_shield_hor_LV_1 = new G4LogicalVolume(boron_shield_hor,boronShieldMat,"boron_shield_hor_LV_1",0,0,0);
+
+      xposition = 0.0; 
+      zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+      zposition = zposition  - 166.0;
+      G4ThreeVector boron_shield_hor_pos_1(xposition , 0, zposition + 6.*cm);
+      G4Transform3D BottomShieldRotate_1(r90Rotation, boron_shield_hor_pos_1);
+
+      //G4PVPlacement *boron_shield_hor_PV = new G4PVPlacement(0,boron_shield_hor_pos,"boron_shield_hor_PV",boron_shield_hor_LV,physicalWorld,false,0);
+      new G4PVPlacement(BottomShieldRotate_1,"boron_shield_hor_PV_1",boron_shield_hor_LV_1,physicalWorld,false,0);
+      boron_shield_hor_LV_1->SetVisAttributes(boron_shield_Vis);
+
+    }
+    else if(GetNbBoronShieldHori() == 2) {
+
+      // horizontal shield 1 : nearer to silicon
+      G4LogicalVolume* boron_shield_hor_LV_1 = new G4LogicalVolume(boron_shield_hor,boronShieldMat,"boron_shield_hor_LV_1",0,0,0);
+
+      xposition = 0.0; 
+      zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+      zposition = zposition  - 166.0;
+      G4ThreeVector boron_shield_hor_pos_1(xposition , 0, zposition + 6.*cm);
+      G4Transform3D BottomShieldRotate_1(r90Rotation, boron_shield_hor_pos_1);
+
+      //G4PVPlacement *boron_shield_hor_PV = new G4PVPlacement(0,boron_shield_hor_pos,"boron_shield_hor_PV",boron_shield_hor_LV,physicalWorld,false,0);
+      new G4PVPlacement(BottomShieldRotate_1,"boron_shield_hor_PV_1",boron_shield_hor_LV_1,physicalWorld,false,0);
+      boron_shield_hor_LV_1->SetVisAttributes(boron_shield_Vis);
+
+      // horizontal shield 2 : Farther from silicon
+      G4LogicalVolume* boron_shield_hor_LV_2 = new G4LogicalVolume(boron_shield_hor,boronShieldMat,"boron_shield_hor_LV_2",0,0,0);
+
+      xposition = 0.0; 
+      zposition = fridge_z-19.254*2.54*cm+2.0*2.54*cm; //floorZ + 89 + (1255 .0+ 2*cm)/2;
+      zposition = zposition  - 166.0;
+      G4ThreeVector boron_shield_hor_pos_2(xposition , 0, zposition - 6.*cm);
+      G4Transform3D BottomShieldRotate_2(r90Rotation, boron_shield_hor_pos_2);
+
+      //G4PVPlacement *boron_shield_hor_PV = new G4PVPlacement(0,boron_shield_hor_pos,"boron_shield_hor_PV",boron_shield_hor_LV,physicalWorld,false,0);
+      new G4PVPlacement(BottomShieldRotate_2,"boron_shield_hor_PV_2",boron_shield_hor_LV_2,physicalWorld,false,0);
+      boron_shield_hor_LV_2->SetVisAttributes(boron_shield_Vis);
+
+    }
+    else if(GetNbBoronShieldHori() == 6) {
+      G4Box *outerBoxHori = new G4Box("outerBoxHori",0.5*(324.0 + 3*cm + BoronShieldThickness*2.54*cm), 0.5*(NaI_tile_length + 3*cm + BoronShieldThickness*2.54*cm) , 0.5*(NaI_tile_height + 3*cm + BoronShieldThickness*2.54*cm));
+      G4Box *innerBoxHori = new G4Box("innerBoxHori",0.5*(324.0 + 3*cm), 0.5*(NaI_tile_length + 3*cm) , 
+    0.5*(NaI_tile_height + 3*cm));
+      G4SubtractionSolid *hollowBoxHori = new G4SubtractionSolid("hollowBoxHori",outerBoxHori,innerBoxHori);
+
+      G4LogicalVolume* hollowBoxHoriLV = new G4LogicalVolume(hollowBoxHori,boronShieldMat,"hollowBoxHoriLV",0,0,0);
+      hollowBoxHoriLV->SetVisAttributes(boron_shield_box_Vis);
+      new G4PVPlacement(BottomRotate,"hollowBoxHori_placement",hollowBoxHoriLV,physicalWorld,false,0);
+    }
+
+    if(ConstructPolyBoxBool && GetNbBoronShieldHori() == 6 && BoronShieldThickness == 1) {
+      G4Box *outerPolyBoxHori = new G4Box("outerPolyBoxHori",0.5*(324.0 + 3*cm + BoronShieldThickness*2.54*cm + 2.54*cm), 0.5*(NaI_tile_length + 3*cm + BoronShieldThickness*2.54*cm + 2.54*cm) , 0.5*(NaI_tile_height + 3*cm + BoronShieldThickness*2.54*cm + 2.54*cm));
+      G4Box *innerPolyBoxHori = new G4Box("innerPolyBoxHori",0.5*(324.0 + 3*cm + BoronShieldThickness*2.54*cm), 0.5*(NaI_tile_length + 3*cm + BoronShieldThickness*2.54*cm) , 0.5*(NaI_tile_height + 3*cm + BoronShieldThickness*2.54*cm));
+      G4SubtractionSolid *hollowPolyBoxHori = new G4SubtractionSolid("hollowPolyBoxHori",outerPolyBoxHori,innerPolyBoxHori);
+
+      G4LogicalVolume* hollowPolyBoxHoriLV = new G4LogicalVolume(hollowPolyBoxHori,polyMat,"hollowPolyBoxHoriLV",0,0,0);
+      hollowPolyBoxHoriLV->SetVisAttributes(polyVis);
+      new G4PVPlacement(BottomRotate,"hollowPolyBoxHori_placement",hollowPolyBoxHoriLV,physicalWorld,false,0);
+    }
+
+ 
+  }
+  
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

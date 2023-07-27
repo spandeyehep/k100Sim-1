@@ -146,6 +146,14 @@ public:
   void SetFirstDetGe(G4bool newVal)  {FirstDetGe = newVal;}
   void SetNbOfTowers(G4int newVal)               {NbOfTowers = newVal;}
   void SetNbOfZips(G4int newVal)                 {NbOfZips = newVal;}
+  //spandey
+  void SetConstructNaIBool(G4bool newVal)     {ConstructNaIArrayBool = newVal;}
+  void SetConstructBoronShieldBool(G4bool newVal)     {ConstructBoronShieldBool = newVal;}
+  void SetSodiumBorateDensityFraction(G4double newVal) {SodiumBorateDensityFraction = newVal;}
+  void SetNbBoronShieldVert(G4int newVal) {NbBoronShieldVert = newVal;}
+  void SetNbBoronShieldHori(G4int newVal) {NbBoronShieldHori = newVal;}
+  void SetBoronShieldThickness(G4double newVal) { BoronShieldThickness = newVal;}
+  void SetConstructPolyBox(G4bool newVal) {ConstructPolyBoxBool = newVal;}
 
 
   G4bool GetConstructTowerBool()   {return ConstructTowerBool;}
@@ -174,6 +182,11 @@ public:
   G4int GetNbOfTowers()           {return NbOfTowers;}
   G4int GetNbOfZips()             {return NbOfZips;}
 
+  G4int GetNbBoronShieldVert () {return NbBoronShieldVert;}
+  G4int GetNbBoronShieldHori () {return NbBoronShieldHori;}
+  G4bool GetConstructPolyBox() {return ConstructPolyBoxBool;}
+
+
   G4bool GetConstructGenericGeometryBool()      {return ConstructGenericGeometryBool;}
   G4bool GetConstructThermalNeutronBoxBool()      {return ConstructThermalNeutronBoxBool;}
   G4bool GetConstructShieldTestEnvironmentBool()      {return ConstructShieldTestEnvironmentBool;}
@@ -190,6 +203,8 @@ public:
   std::map<G4String,G4int> *GetSensitiveList() { return &k100CollName;}
   G4int    GetNSensitive() {return k100CollName.size();}
 
+  G4double GetSodiumBorateDensityFraction() {return SodiumBorateDensityFraction;}
+  G4double GetBoronShieldThickness() {return BoronShieldThickness;}
 
 
   void SetDrawSolidDetBox(G4bool newVal)         {DrawSolidDetBox = newVal;}
@@ -215,6 +230,12 @@ private:
   G4bool ConstructWestReflectorBool;
   G4bool ConstructFrameBool;
   G4bool ConstructPuBeSourceAndShieldBool;
+  //spandey
+  G4bool ConstructNaIArrayBool;
+  G4bool ConstructBoronShieldBool;
+  G4double SodiumBorateDensityFraction;
+  G4double BoronShieldThickness;
+  G4bool ConstructPolyBoxBool;
 
   G4Material *zipGeMat, *zipSiMat, *towerMat, *scintMat;
   G4Material* polyMat, *mumetalMat;
@@ -233,7 +254,7 @@ private:
   G4Material* G4NISTconcrete,*G4NISTair,*G4NISTNaI,*G4NISTPVC,*G4NISTPE,*G4NISTlucite,*G4NISTparaffin,*G4NISTstainless;
   G4Material* G4NISTAl;
   G4Material* G4NISTGypsum; //drywall
-
+  G4Material* boronShieldMat; // sodium tetraborate decahydrate : https://www.sigmaaldrich.com/US/en/product/sigald/s9640
   //SD map
   std::map<G4String,G4int> k100CollName;
   std::map<G4String,k100_ZipSD*> k100CollPoint;
@@ -243,6 +264,9 @@ private:
   //  k100_ZipSD*   azipSD;
 
   G4int NbOfZips, NbOfTowers, NbZipsPerTower;
+
+  G4int NbBoronShieldVert;
+  G4int NbBoronShieldHori;
 
   G4Region* DetectorRegion;
 
@@ -289,7 +313,8 @@ private:
   void ConstructSimpleGammaCoin(G4VPhysicalVolume*  world);
   void ConstructPuBeNaI(G4VPhysicalVolume*  world);
   void FillTheTower(G4VPhysicalVolume* physicalTower, G4int towerNb);
-
+  //spandey
+  void ConstructNaIArray(G4LogicalVolume*  logicalWorld);
 #include "k100_DetectorParameterDef.hh"
 
 public:
